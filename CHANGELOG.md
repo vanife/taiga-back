@@ -14,6 +14,9 @@
     - New API endpoints over projects to create, rename, edit, delete and mix tags.
     - Tag color assignation is not automatic.
     - Select a color (or not) to a tag when add it to stories, issues and tasks.
+- Import/Export:
+    - Gzip export/import support.
+    - Export performance improvements.
 
 ### Misc
 - [API] Improve performance of some calls over list.
