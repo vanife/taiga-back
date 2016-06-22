@@ -127,15 +127,28 @@ def render_and_extract(project, text):
 class DiffMatchPatch(diff_match_patch.diff_match_patch):
     def diff_pretty_html(self, diffs):
         html = []
-        for (op, data) in diffs:
+        for idx, (op, data) in enumerate(diffs):
             text = (data.replace("&", "&amp;").replace("<", "&lt;")
                     .replace(">", "&gt;").replace("\n", "<br />"))
             if op == self.DIFF_INSERT:
-                html.append("<ins style=\"background:#e6ffe6;\">%s</ins>" % text)
+                html.append("<ins style=\"background:#e6ffe6;\">{}</ins>".format(text))
             elif op == self.DIFF_DELETE:
-                html.append("<del style=\"background:#ffe6e6;\">%s</del>" % text)
+                html.append("<del style=\"background:#ffe6e6;\">{}</del>".format(text))
             elif op == self.DIFF_EQUAL:
-                html.append("<span>%s</span>" % text)
+                if len(text) > 40:
+
+                    if idx == 0:
+                        first = ""
+                    else:
+                        first = " ".join(text.split()[:5])
+                    if idx == len(diffs) -1:
+                        last = ""
+                    else:
+                        last = " ".join(text.split()[-5:])
+
+                    html.append("<span>{} (...) {}</span>".format(first, last))
+                else:
+                    html.append("<span>{}</span>".format(text))
         return "".join(html)
 
 
