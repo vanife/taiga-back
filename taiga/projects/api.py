@@ -70,9 +70,6 @@ from . import services
 class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin, BlockeableSaveMixin, BlockeableDeleteMixin,
                      TagsColorsResourceMixin, ModelCrudViewSet):
     queryset = models.Project.objects.all()
-    serializer_class = serializers.ProjectDetailSerializer
-    admin_serializer_class = serializers.ProjectDetailAdminSerializer
-    list_serializer_class = serializers.ProjectSerializer
     permission_classes = (permissions.ProjectPermission, )
     filter_backends = (project_filters.QFilterBackend,
                        project_filters.CanViewProjectObjFilterBackend,
@@ -108,16 +105,175 @@ class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin, BlockeableSaveMix
         qs = super().get_queryset()
 
         qs = qs.select_related("owner")
-        # Prefetch doesn"t work correctly if then if the field is filtered later (it generates more queries)
-        # so we add some custom prefetching
-        qs = qs.prefetch_related("members")
-        qs = qs.prefetch_related("memberships")
-        qs = qs.prefetch_related(Prefetch("notify_policies",
-            NotifyPolicy.objects.exclude(notify_level=NotifyLevel.none), to_attr="valid_notify_policies"))
 
-        Milestone = apps.get_model("milestones", "Milestone")
-        qs = qs.prefetch_related(Prefetch("milestones",
-            Milestone.objects.filter(closed=True), to_attr="closed_milestones"))
+        # TODO: mover esto a un utils
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(t))::text
+                    FROM(
+                        SELECT
+                            users_user.id,
+                            users_user.username,
+                            users_user.full_name,
+                            users_user.email,
+                            concat(full_name, username) complete_user_name,
+                            users_user.color,
+                            users_user.photo,
+                            users_user.is_active,
+                            users_role.name role_name
+
+                        FROM projects_membership
+                        LEFT JOIN users_user ON projects_membership.user_id = users_user.id
+                        LEFT JOIN users_role ON users_role.id = projects_membership.role_id
+                        WHERE projects_membership.project_id = {tbl}.id
+                        ORDER BY complete_user_name) t"""
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"members_attr": sql})
+
+        # closed milestones
+        model = qs.model
+        sql = """SELECT COUNT(milestones_milestone.id)
+            	    FROM milestones_milestone
+                    WHERE
+                        milestones_milestone.project_id = {tbl}.id AND
+                        milestones_milestone.closed = True
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"closed_milestones_attr": sql})
+
+        # notify_policies
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(notifications_notifypolicy))::text
+            	    FROM notifications_notifypolicy
+                    WHERE
+                        notifications_notifypolicy.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"notify_policies_attr": sql})
+
+        # projects_userstorystatus
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(projects_userstorystatus))::text
+            	    FROM projects_userstorystatus
+                    WHERE
+                        projects_userstorystatus.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"projects_userstorystatus_attr": sql})
+
+        # points
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(projects_points))::text
+            	    FROM projects_points
+                    WHERE
+                        projects_points.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"points_attr": sql})
+
+        # task_statuses
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(projects_taskstatus))::text
+            	    FROM projects_taskstatus
+                    WHERE
+                        projects_taskstatus.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"task_statuses_attr": sql})
+
+        # issue_statuses
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(projects_issuestatus))::text
+            	    FROM projects_issuestatus
+                    WHERE
+                        projects_issuestatus.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"issue_statuses_attr": sql})
+
+        # issue_types
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(projects_issuetype))::text
+            	    FROM projects_issuetype
+                    WHERE
+                        projects_issuetype.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"issue_types_attr": sql})
+
+        # priorities
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(projects_priority))::text
+            	    FROM projects_priority
+                    WHERE
+                        projects_priority.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"priorities_attr": sql})
+
+        # severities
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(projects_severity))::text
+            	    FROM projects_severity
+                    WHERE
+                        projects_severity.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"severities_attr": sql})
+
+
+        # userstory_custom_attributes
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(custom_attributes_userstorycustomattribute))::text
+            	    FROM custom_attributes_userstorycustomattribute
+                    WHERE
+                        custom_attributes_userstorycustomattribute.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"userstory_custom_attributes_attr": sql})
+
+        # task_custom_attributes
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(custom_attributes_taskcustomattribute))::text
+            	    FROM custom_attributes_taskcustomattribute
+                    WHERE
+                        custom_attributes_taskcustomattribute.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"task_custom_attributes_attr": sql})
+
+        # issue_custom_attributes
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(custom_attributes_issuecustomattribute))::text
+            	    FROM custom_attributes_issuecustomattribute
+                    WHERE
+                        custom_attributes_issuecustomattribute.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"issue_custom_attributes_attr": sql})
+
+        # roles
+        model = qs.model
+        sql = """SELECT json_agg(row_to_json(users_role))::text
+            	    FROM users_role
+                    WHERE
+                        users_role.project_id = {tbl}.id
+                    """
+
+        sql = sql.format(tbl=model._meta.db_table)
+        qs = qs.extra(select={"roles_attr": sql})
 
         # If filtering an activity period we must exclude the activities not updated recently enough
         now = timezone.now()
@@ -138,21 +294,17 @@ class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin, BlockeableSaveMix
         return qs
 
     def get_serializer_class(self):
-        serializer_class = self.serializer_class
-
         if self.action == "list":
-            serializer_class = self.list_serializer_class
-        elif self.action != "create":
-            if self.action == "by_slug":
-                slug = self.request.QUERY_PARAMS.get("slug", None)
-                project = get_object_or_404(models.Project, slug=slug)
-            else:
-                project = self.get_object()
+            return serializers.LightProjectSerializer
 
-            if permissions_services.is_project_admin(self.request.user, project):
-                serializer_class = self.admin_serializer_class
+        if self.action in ["retrieve", "by_slug"]:
+            #TODO
+            #if permissions_services.is_project_admin(self.request.user, project):
+            #    return serializers.ProjectDetailAdminSerializer
 
-        return serializer_class
+            return serializers.LightProjectDetailSerializer
+
+        return serializers.ProjectDetailSerializer
 
     @detail_route(methods=["POST"])
     def change_logo(self, request, *args, **kwargs):

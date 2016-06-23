@@ -28,6 +28,7 @@ from taiga.base.fields import PgArrayField
 from taiga.users.services import get_photo_or_gravatar_url
 from taiga.users.serializers import UserBasicInfoSerializer
 from taiga.users.serializers import ProjectRoleSerializer
+from taiga.users.serializers import ListUserBasicInfoSerializer
 from taiga.users.validators import RoleExistsValidator
 
 from taiga.permissions.services import get_user_project_permissions
@@ -42,10 +43,13 @@ from .likes.mixins.serializers import FanResourceSerializerMixin
 from .mixins.serializers import ValidateDuplicatedNameInProjectMixin
 from .notifications.choices import NotifyLevel
 from .notifications.mixins import WatchedResourceModelSerializer
+from .notifications.mixins import ListWatchedResourceModelSerializer
 from .tagging.fields import TagsField
 from .tagging.fields import TagsColorsField
 from .validators import ProjectExistsValidator
 
+import json
+import serpy
 
 ######################################################
 ## Custom values for selectors
@@ -377,6 +381,171 @@ class ProjectDetailAdminSerializer(ProjectDetailSerializer):
     def get_max_memberships(self, obj):
         return services.get_max_memberships_for_project(obj)
 
+
+
+class LightProjectSerializer(serializers.LightSerializer):
+    id = serpy.Field()
+    name = serpy.Field()
+    slug = serpy.Field()
+    description = serpy.Field()
+    created_date = serpy.Field()
+    modified_date = serpy.Field()
+    owner = serpy.MethodField()
+    members = serpy.MethodField()
+    total_milestones = serpy.Field()
+    total_story_points = serpy.Field()
+    is_backlog_activated = serpy.Field()
+    is_kanban_activated = serpy.Field()
+    is_wiki_activated = serpy.Field()
+    is_issues_activated = serpy.Field()
+    videoconferences = serpy.Field()
+    videoconferences_extra_data = serpy.Field()
+    creation_template = serpy.Field(attr="creation_template_id")
+    is_private = serpy.Field()
+    anon_permissions = serpy.Field()
+    public_permissions = serpy.Field()
+    is_featured = serpy.Field()
+    is_looking_for_people = serpy.Field()
+    looking_for_people_note = serpy.Field()
+    blocked_code = serpy.Field()
+    totals_updated_datetime = serpy.Field()
+    total_fans = serpy.Field()
+    total_fans_last_week = serpy.Field()
+    total_fans_last_month = serpy.Field()
+    total_fans_last_year = serpy.Field()
+    total_activity = serpy.Field()
+    total_activity_last_week = serpy.Field()
+    total_activity_last_month = serpy.Field()
+    total_activity_last_year = serpy.Field()
+    tags = serpy.Field()
+    tags_colors = serpy.MethodField()
+
+    my_permissions = serpy.MethodField()
+
+    i_am_owner = serpy.MethodField()
+    i_am_admin = serpy.MethodField()
+    i_am_member = serpy.MethodField()
+
+    notify_level = serpy.MethodField("get_notify_level")
+    total_closed_milestones = serpy.MethodField()
+
+    is_watcher = serpy.MethodField()
+    total_watchers = serpy.MethodField()
+
+    logo_small_url = serpy.MethodField()
+    logo_big_url = serpy.MethodField()
+
+    #TODO: sobreescrito
+    is_fan = serpy.MethodField()
+
+    def get_members(self, obj):
+        assert hasattr(obj, "members_attr"), "instance must have a members_attr attribute"
+        return [m.get("id") for m in obj.members_attr if m["id"] is not None]
+
+    def get_i_am_member(self, obj):
+        assert hasattr(obj, "members_attr"), "instance must have a members_attr attribute"
+        if "request" in self.context:
+            user = self.context["request"].user
+            if not user.is_anonymous() and user.id in obj.members_attr:
+                return True
+
+        return False
+
+    def get_tags_colors(self, obj):
+        #TODO
+        return []
+        return dict(obj.tags_colors)
+
+    def get_my_permissions(self, obj):
+        if "request" in self.context:
+            return get_user_project_permissions(self.context["request"].user, obj)
+        return []
+
+    def get_owner(self, obj):
+        return ListUserBasicInfoSerializer(obj.owner).data
+
+    def get_i_am_owner(self, obj):
+        if "request" in self.context:
+            return is_project_owner(self.context["request"].user, obj)
+        return False
+
+    def get_i_am_admin(self, obj):
+        if "request" in self.context:
+            return is_project_admin(self.context["request"].user, obj)
+        return False
+
+    def get_total_closed_milestones(self, obj):
+        assert hasattr(obj, "closed_milestones_attr"), "instance must have a closed_milestones_attr attribute"
+        return obj.closed_milestones_attr
+
+    def get_is_watcher(self, obj):
+        assert hasattr(obj, "notify_policies_attr"), "instance must have a notify_policies_attr attribute"
+        np = self.get_notify_level(obj)
+        return np != None
+
+    def get_total_watchers(self, obj):
+        assert hasattr(obj, "notify_policies_attr"), "instance must have a notify_policies_attr attribute"
+        valid_notify_policies = [np for np in obj.notify_policies_attr if np["notify_level"] != NotifyLevel.none]
+        return len(valid_notify_policies)
+
+    def get_notify_level(self, obj):
+        assert hasattr(obj, "notify_policies_attr"), "instance must have a notify_policies_attr attribute"
+        if "request" in self.context:
+            user = self.context["request"].user
+            for np in obj.notify_policies_attr:
+                if np["user_id"] == user.id:
+                    return np["notify_level"]
+
+        return None
+
+    def get_logo_small_url(self, obj):
+        return services.get_logo_small_thumbnail_url(obj)
+
+    def get_logo_big_url(self, obj):
+        return services.get_logo_big_thumbnail_url(obj)
+
+    def get_is_fan(self, obj):
+        if "request" in self.context:
+            user = self.context["request"].user
+            return user.is_authenticated() and user.is_fan(obj)
+
+        return False
+
+
+class LightProjectDetailSerializer(LightProjectSerializer):
+    # TODO: i18n de cosas
+    us_statuses = serpy.Field(attr="projects_userstorystatus_attr")
+    points = serpy.Field(attr="points_attr")
+    task_statuses = serpy.Field(attr="task_statuses_attr")
+    issue_statuses = serpy.Field(attr="issue_statuses_attr")
+    issue_types = serpy.Field(attr="issue_types_attr")
+    priorities = serpy.Field(attr="priorities_attr")
+    severities = serpy.Field(attr="severities_attr")
+    userstory_custom_attributes = serpy.Field(attr="userstory_custom_attributes_attr")
+    task_custom_attributes = serpy.Field(attr="task_custom_attributes_attr")
+    issue_custom_attributes = serpy.Field(attr="issue_custom_attributes_attr")
+    roles = serpy.Field(attr="roles_attr")
+    members = serpy.MethodField()
+    total_memberships = serpy.MethodField()
+    is_out_of_owner_limits = serpy.MethodField()
+
+    def get_members(self, obj):
+        assert hasattr(obj, "members_attr"), "instance must have a members_attr attribute"
+        ret = []
+        for m in obj.members_attr:
+            m["full_name_display"] = m["full_name"] or m["username"] or m["email"]
+            del(m["email"])
+            del(m["complete_user_name"])
+            if not m["id"] is None:
+                ret.append(m)
+
+        return ret
+
+    def get_total_memberships(self, obj):
+        return services.get_total_project_memberships(obj)
+
+    def get_is_out_of_owner_limits(self, obj):
+        return services.check_if_project_is_out_of_owner_limits(obj)
 
 ######################################################
 ## Liked

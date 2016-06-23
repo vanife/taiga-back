@@ -205,8 +205,8 @@ class WatchedResourceModelSerializer(BaseWatchedResourceModelSerializer, seriali
 
 
 class ListWatchedResourceModelSerializer(BaseWatchedResourceModelSerializer, serpy.Serializer):
-    is_watcher = serializers.SerializerMethodField("get_is_watcher")
-    total_watchers = serializers.SerializerMethodField("get_total_watchers")
+    is_watcher = serpy.MethodField("get_is_watcher")
+    total_watchers = serpy.MethodField("get_total_watchers")
 
 
 class EditableWatchedResourceModelSerializer(WatchedResourceModelSerializer):
