@@ -323,13 +323,12 @@ def attach_roles(queryset, as_field="roles_attr"):
     queryset = queryset.extra(select={as_field: sql})
     return queryset
 
-
+#TODO: doc
 def attach_is_fan(queryset, user, as_field="is_fan_attr"):
     model = queryset.model
     if user.is_anonymous():
         sql = """SELECT false"""
     else:
-        #TODO
         sql = """SELECT COUNT(likes_like.id) > 0
                     FROM likes_like
                     INNER JOIN django_content_type
@@ -339,6 +338,24 @@ def attach_is_fan(queryset, user, as_field="is_fan_attr"):
                         django_content_type.app_label = 'projects' AND
                         likes_like.user_id = {user_id} AND
                         likes_like.object_id = {tbl}.id"""
+
+    sql = sql.format(tbl=model._meta.db_table, user_id=user.id)
+    queryset = queryset.extra(select={as_field: sql})
+    return queryset
+
+#TODO: doc
+def attach_my_role_permissions(queryset, user, as_field="my_role_permissions_attr"):
+    model = queryset.model
+    if user.is_anonymous():
+        sql = """SELECT NULL"""
+    else:
+        sql = """SELECT users_role.permissions
+                        FROM projects_membership
+                        LEFT JOIN users_user ON projects_membership.user_id = users_user.id
+                        LEFT JOIN users_role ON users_role.id = projects_membership.role_id
+                        WHERE
+                            projects_membership.project_id = {tbl}.id AND
+                            users_user.id = {user_id}"""
 
     sql = sql.format(tbl=model._meta.db_table, user_id=user.id)
     queryset = queryset.extra(select={as_field: sql})

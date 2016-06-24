@@ -121,6 +121,7 @@ class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin, BlockeableSaveMix
         qs = project_utils.attach_issue_custom_attributes(qs)
         qs = project_utils.attach_roles(qs)
         qs = project_utils.attach_is_fan(qs, self.request.user)
+        qs = project_utils.attach_my_role_permissions(qs, self.request.user)
 
         # If filtering an activity period we must exclude the activities not updated recently enough
         now = timezone.now()
@@ -140,19 +141,17 @@ class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin, BlockeableSaveMix
 
         return qs
 
+    def retrieve(self, request, *args, **kwargs):
+        if self.action == "by_slug":
+            self.lookup_field = "slug"
+
+        return super().retrieve(request, *args, **kwargs)
+
     def get_serializer_class(self):
         if self.action == "list":
             return serializers.LightProjectSerializer
 
-        if self.action == "retrieve":
-            return serializers.LightProjectDetailSerializer
-
-        if self.action == "by_slug":
-            slug = self.request.QUERY_PARAMS.get("slug", None)
-            project = get_object_or_404(models.Project, slug=slug)
-            if permissions_services.is_project_admin(self.request.user, project):
-                return serializers.LightProjectDetailAdminSerializer
-
+        if self.action in ["retrieve", "by_slug"]:
             return serializers.LightProjectDetailSerializer
 
         return serializers.ProjectDetailSerializer
@@ -286,10 +285,9 @@ class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin, BlockeableSaveMix
         return response.Ok(data)
 
     @list_route(methods=["GET"])
-    def by_slug(self, request):
+    def by_slug(self, request, *args, **kwargs):
         slug = request.QUERY_PARAMS.get("slug", None)
-        project = get_object_or_404(models.Project, slug=slug)
-        return self.retrieve(request, pk=project.pk)
+        return self.retrieve(request, slug=slug)
 
     @detail_route(methods=["GET", "PATCH"])
     def modules(self, request, pk=None):

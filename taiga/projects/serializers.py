@@ -25,6 +25,7 @@ from taiga.base.api import serializers
 from taiga.base.fields import JsonField
 from taiga.base.fields import PgArrayField
 
+from taiga.permissions import services as permissions_services
 from taiga.users.services import get_photo_or_gravatar_url
 from taiga.users.serializers import UserBasicInfoSerializer
 from taiga.users.serializers import ProjectRoleSerializer
@@ -252,20 +253,8 @@ class ProjectSerializer(FanResourceSerializerMixin, WatchedResourceModelSerializ
                         serializers.ModelSerializer):
     anon_permissions = PgArrayField(required=False)
     public_permissions = PgArrayField(required=False)
-    my_permissions = serializers.SerializerMethodField("get_my_permissions")
-
-    owner = UserBasicInfoSerializer(read_only=True)
-    i_am_owner = serializers.SerializerMethodField("get_i_am_owner")
-    i_am_admin = serializers.SerializerMethodField("get_i_am_admin")
-    i_am_member = serializers.SerializerMethodField("get_i_am_member")
-
     tags = TagsField(default=[], required=False)
     tags_colors = TagsColorsField(required=False, read_only=True)
-
-    notify_level = serializers.SerializerMethodField("get_notify_level")
-    total_closed_milestones = serializers.SerializerMethodField("get_total_closed_milestones")
-    total_watchers = serializers.SerializerMethodField("get_total_watchers")
-
     logo_small_url = serializers.SerializerMethodField("get_logo_small_url")
     logo_big_url = serializers.SerializerMethodField("get_logo_big_url")
 
@@ -275,57 +264,6 @@ class ProjectSerializer(FanResourceSerializerMixin, WatchedResourceModelSerializ
         exclude = ("logo", "last_us_ref", "last_task_ref", "last_issue_ref",
                    "issues_csv_uuid", "tasks_csv_uuid", "userstories_csv_uuid",
                    "transfer_token")
-
-    def get_my_permissions(self, obj):
-        if "request" in self.context:
-            return get_user_project_permissions(self.context["request"].user, obj)
-        return []
-
-    def get_i_am_owner(self, obj):
-        if "request" in self.context:
-            return is_project_owner(self.context["request"].user, obj)
-        return False
-
-    def get_i_am_admin(self, obj):
-        if "request" in self.context:
-            return is_project_admin(self.context["request"].user, obj)
-        return False
-
-    def get_i_am_member(self, obj):
-        if "request" in self.context:
-            user = self.context["request"].user
-            if not user.is_anonymous() and user.cached_membership_for_project(obj):
-                return True
-        return False
-
-    def get_total_closed_milestones(self, obj):
-        # The "closed_milestone" attribute can be attached in the get_queryset method of the viewset.
-        qs_closed_milestones = getattr(obj, "closed_milestones", None)
-        if qs_closed_milestones is not None:
-            return len(qs_closed_milestones)
-
-        return obj.milestones.filter(closed=True).count()
-
-    def get_notify_level(self, obj):
-        if "request" in self.context:
-            user = self.context["request"].user
-            return user.is_authenticated() and user.get_notify_level(obj)
-
-        return None
-
-    def get_total_watchers(self, obj):
-        # The "valid_notify_policies" attribute can be attached in the get_queryset method of the viewset.
-        qs_valid_notify_policies = getattr(obj, "valid_notify_policies", None)
-        if qs_valid_notify_policies is not None:
-            return len(qs_valid_notify_policies)
-
-        return obj.notify_policies.exclude(notify_level=NotifyLevel.none).count()
-
-    def get_logo_small_url(self, obj):
-        return services.get_logo_small_thumbnail_url(obj)
-
-    def get_logo_big_url(self, obj):
-        return services.get_logo_big_thumbnail_url(obj)
 
 
 class ProjectDetailSerializer(ProjectSerializer):
@@ -455,6 +393,9 @@ class LightProjectSerializer(serializers.LightSerializer):
         return dict(obj.tags_colors)
 
     def get_my_permissions(self, obj):
+        #TODO: extra query
+        print("XXXX", obj.my_role_permissions_attr)
+        return []
         if "request" in self.context:
             return get_user_project_permissions(self.context["request"].user, obj)
         return []
@@ -519,6 +460,14 @@ class LightProjectDetailSerializer(LightProjectSerializer):
     total_memberships = serpy.MethodField()
     is_out_of_owner_limits = serpy.MethodField()
 
+    #Admin fields
+    is_private_extra_info = serpy.MethodField()
+    max_memberships = serpy.MethodField()
+    issues_csv_uuid = serpy.Field()
+    tasks_csv_uuid = serpy.Field()
+    userstories_csv_uuid = serpy.Field()
+    transfer_token = serpy.Field()
+
     def to_value(self, instance):
         # Name attributes must be translated
         for attr in ["userstory_statuses_attr","points_attr", "task_statuses_attr",
@@ -534,7 +483,23 @@ class LightProjectDetailSerializer(LightProjectSerializer):
             for elem in val:
                 elem["name"] = _(elem["name"])
 
-        return super().to_value(instance)
+        ret = super().to_value(instance)
+
+        admin_fields = [
+            "is_private_extra_info", "max_memberships", "issues_csv_uuid",
+            "tasks_csv_uuid", "userstories_csv_uuid", "transfer_token"
+        ]
+
+        is_admin_user = False
+        if "request" in self.context:
+            user = self.context["request"].user
+            is_admin_user = permissions_services.is_project_admin(user, instance)
+
+        if not is_admin_user:
+            for admin_field in admin_fields:
+                del(ret[admin_field])
+
+        return ret
 
     def get_members(self, obj):
         assert hasattr(obj, "members_attr"), "instance must have a members_attr attribute"
@@ -552,18 +517,13 @@ class LightProjectDetailSerializer(LightProjectSerializer):
         return len(obj.members_attr)
 
     def get_is_out_of_owner_limits(self, obj):
+        #TODO: extra query
+        return []
         return services.check_if_project_is_out_of_owner_limits(obj)
 
-
-class LightProjectDetailAdminSerializer(LightProjectDetailSerializer):
-    is_private_extra_info = serpy.MethodField()
-    max_memberships = serpy.MethodField()
-    issues_csv_uuid = serpy.Field()
-    tasks_csv_uuid = serpy.Field()
-    userstories_csv_uuid = serpy.Field()
-    transfer_token = serpy.Field()
-
     def get_is_private_extra_info(self, obj):
+        #TODO: extra query
+        return []
         return services.check_if_project_privacity_can_be_changed(obj)
 
     def get_max_memberships(self, obj):
