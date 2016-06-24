@@ -360,3 +360,36 @@ def attach_my_role_permissions(queryset, user, as_field="my_role_permissions_att
     sql = sql.format(tbl=model._meta.db_table, user_id=user.id)
     queryset = queryset.extra(select={as_field: sql})
     return queryset
+
+#TODO: doc
+def attach_private_projects_same_owner(queryset, user, as_field="private_projects_same_owner_attr"):
+    model = queryset.model
+    if user.is_anonymous():
+        sql = """SELECT NULL"""
+    else:
+        sql = """SELECT COUNT(id)
+                        FROM projects_project p_aux
+                        WHERE
+                            p_aux.is_private = True AND
+                            p_aux.owner_id = {tbl}.owner_id"""
+
+    sql = sql.format(tbl=model._meta.db_table, user_id=user.id)
+    queryset = queryset.extra(select={as_field: sql})
+    return queryset
+
+
+#TODO: doc
+def attach_public_projects_same_owner(queryset, user, as_field="public_projects_same_owner_attr"):
+    model = queryset.model
+    if user.is_anonymous():
+        sql = """SELECT NULL"""
+    else:
+        sql = """SELECT COUNT(id)
+                        FROM projects_project p_aux
+                        WHERE
+                            p_aux.is_private = False AND
+                            p_aux.owner_id = {tbl}.owner_id"""
+
+    sql = sql.format(tbl=model._meta.db_table, user_id=user.id)
+    queryset = queryset.extra(select={as_field: sql})
+    return queryset

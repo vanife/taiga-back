@@ -396,7 +396,7 @@ class LightProjectSerializer(serializers.LightSerializer):
     def get_my_permissions(self, obj):
         if "request" in self.context:
             user = self.context["request"].user
-            ret = calculate_permissions(
+            return calculate_permissions(
                         is_authenticated = user.is_authenticated(),
                         is_superuser = user.is_superuser,
                         is_member = self.get_i_am_member(obj),
@@ -404,9 +404,6 @@ class LightProjectSerializer(serializers.LightSerializer):
                         role_permissions = obj.my_role_permissions_attr,
                         anon_permissions = obj.anon_permissions,
                         public_permissions = obj.public_permissions)
-
-            return ret
-
         return []
 
     def get_owner(self, obj):
@@ -526,14 +523,22 @@ class LightProjectDetailSerializer(LightProjectSerializer):
         return len(obj.members_attr)
 
     def get_is_out_of_owner_limits(self, obj):
-        #TODO: extra query
-        return []
-        return services.check_if_project_is_out_of_owner_limits(obj)
+        assert hasattr(obj, "private_projects_same_owner_attr"), "instance must have a private_projects_same_owner_attr attribute"
+        assert hasattr(obj, "public_projects_same_owner_attr"), "instance must have a public_projects_same_owner_attr attribute"
+        return services.check_if_project_is_out_of_owner_limits(obj,
+            current_memberships = self.get_total_memberships(obj),
+            current_private_projects=obj.private_projects_same_owner_attr,
+            current_public_projects=obj.public_projects_same_owner_attr
+        )
 
     def get_is_private_extra_info(self, obj):
-        #TODO: extra query
-        return []
-        return services.check_if_project_privacity_can_be_changed(obj)
+        assert hasattr(obj, "private_projects_same_owner_attr"), "instance must have a private_projects_same_owner_attr attribute"
+        assert hasattr(obj, "public_projects_same_owner_attr"), "instance must have a public_projects_same_owner_attr attribute"
+        return services.check_if_project_privacity_can_be_changed(obj,
+            current_memberships = self.get_total_memberships(obj),
+            current_private_projects=obj.private_projects_same_owner_attr,
+            current_public_projects=obj.public_projects_same_owner_attr
+        )
 
     def get_max_memberships(self, obj):
         return services.get_max_memberships_for_project(obj)

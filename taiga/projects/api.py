@@ -122,6 +122,8 @@ class ProjectViewSet(LikedResourceMixin, HistoryResourceMixin, BlockeableSaveMix
         qs = project_utils.attach_roles(qs)
         qs = project_utils.attach_is_fan(qs, self.request.user)
         qs = project_utils.attach_my_role_permissions(qs, self.request.user)
+        qs = project_utils.attach_private_projects_same_owner(qs, self.request.user)
+        qs = project_utils.attach_public_projects_same_owner(qs, self.request.user)
 
         # If filtering an activity period we must exclude the activities not updated recently enough
         now = timezone.now()
