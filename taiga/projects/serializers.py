@@ -33,6 +33,7 @@ from taiga.users.serializers import ListUserBasicInfoSerializer
 from taiga.users.validators import RoleExistsValidator
 
 from taiga.permissions.services import get_user_project_permissions
+from taiga.permissions.services import calculate_permissions
 from taiga.permissions.services import is_project_admin, is_project_owner
 
 from . import models
@@ -393,11 +394,19 @@ class LightProjectSerializer(serializers.LightSerializer):
         return dict(obj.tags_colors)
 
     def get_my_permissions(self, obj):
-        #TODO: extra query
-        print("XXXX", obj.my_role_permissions_attr)
-        return []
         if "request" in self.context:
-            return get_user_project_permissions(self.context["request"].user, obj)
+            user = self.context["request"].user
+            ret = calculate_permissions(
+                        is_authenticated = user.is_authenticated(),
+                        is_superuser = user.is_superuser,
+                        is_member = self.get_i_am_member(obj),
+                        is_admin = self.get_i_am_admin(obj),
+                        role_permissions = obj.my_role_permissions_attr,
+                        anon_permissions = obj.anon_permissions,
+                        public_permissions = obj.public_permissions)
+
+            return ret
+
         return []
 
     def get_owner(self, obj):
