@@ -382,7 +382,6 @@ class ProjectDetailAdminSerializer(ProjectDetailSerializer):
         return services.get_max_memberships_for_project(obj)
 
 
-
 class LightProjectSerializer(serializers.LightSerializer):
     id = serpy.Field()
     name = serpy.Field()
@@ -435,8 +434,7 @@ class LightProjectSerializer(serializers.LightSerializer):
     logo_small_url = serpy.MethodField()
     logo_big_url = serpy.MethodField()
 
-    #TODO: sobreescrito
-    is_fan = serpy.MethodField()
+    is_fan = serpy.Field(attr="is_fan_attr")
 
     def get_members(self, obj):
         assert hasattr(obj, "members_attr"), "instance must have a members_attr attribute"
@@ -504,17 +502,9 @@ class LightProjectSerializer(serializers.LightSerializer):
     def get_logo_big_url(self, obj):
         return services.get_logo_big_thumbnail_url(obj)
 
-    def get_is_fan(self, obj):
-        if "request" in self.context:
-            user = self.context["request"].user
-            return user.is_authenticated() and user.is_fan(obj)
-
-        return False
-
 
 class LightProjectDetailSerializer(LightProjectSerializer):
-    # TODO: i18n de cosas
-    us_statuses = serpy.Field(attr="projects_userstorystatus_attr")
+    us_statuses = serpy.Field(attr="userstory_statuses_attr")
     points = serpy.Field(attr="points_attr")
     task_statuses = serpy.Field(attr="task_statuses_attr")
     issue_statuses = serpy.Field(attr="issue_statuses_attr")
@@ -529,6 +519,23 @@ class LightProjectDetailSerializer(LightProjectSerializer):
     total_memberships = serpy.MethodField()
     is_out_of_owner_limits = serpy.MethodField()
 
+    def to_value(self, instance):
+        # Name attributes must be translated
+        for attr in ["userstory_statuses_attr","points_attr", "task_statuses_attr",
+                     "issue_statuses_attr", "issue_types_attr", "priorities_attr",
+                     "severities_attr", "userstory_custom_attributes_attr",
+                     "task_custom_attributes_attr","issue_custom_attributes_attr", "roles_attr"]:
+
+            assert hasattr(instance, attr), "instance must have a {} attribute".format(attr)
+            val = getattr(instance, attr)
+            if val is None:
+                continue
+
+            for elem in val:
+                elem["name"] = _(elem["name"])
+
+        return super().to_value(instance)
+
     def get_members(self, obj):
         assert hasattr(obj, "members_attr"), "instance must have a members_attr attribute"
         ret = []
@@ -542,10 +549,25 @@ class LightProjectDetailSerializer(LightProjectSerializer):
         return ret
 
     def get_total_memberships(self, obj):
-        return services.get_total_project_memberships(obj)
+        return len(obj.members_attr)
 
     def get_is_out_of_owner_limits(self, obj):
         return services.check_if_project_is_out_of_owner_limits(obj)
+
+
+class LightProjectDetailAdminSerializer(LightProjectDetailSerializer):
+    is_private_extra_info = serpy.MethodField()
+    max_memberships = serpy.MethodField()
+    issues_csv_uuid = serpy.Field()
+    tasks_csv_uuid = serpy.Field()
+    userstories_csv_uuid = serpy.Field()
+    transfer_token = serpy.Field()
+
+    def get_is_private_extra_info(self, obj):
+        return services.check_if_project_privacity_can_be_changed(obj)
+
+    def get_max_memberships(self, obj):
+        return services.get_max_memberships_for_project(obj)
 
 ######################################################
 ## Liked
